@@ -48,6 +48,8 @@
 #include "log.h"
 #include "driver.h"
 
+#define DEFAULT_HELLO_TIME 2
+
 static void PTSM_tick(port_t *prt);
 static bool TCSM_run(per_tree_port_t *ptp, bool dry_run);
 static void BDSM_begin(port_t *prt);
@@ -260,7 +262,7 @@ bool MSTP_IN_bridge_create(bridge_t *br, __u8 *macaddr)
     assign(br->Transmit_Hold_Count, 6u); /* 17.14 of 802.1D */
     assign(br->Migrate_Time, 3u); /* 17.14 of 802.1D */
     assign(br->Ageing_Time, 300u);/* 8.8.3 Table 8-3 */
-    assign(br->Hello_Time, (__u8)2);     /* 17.14 of 802.1D */
+    assign(br->Hello_Time, (__u8)DEFAULT_HELLO_TIME); /* 17.14 of 802.1D */
 
     bridge_default_internal_vars(br);
 
