@@ -2147,14 +2147,9 @@ static void recordTimes(per_tree_port_t *ptp)
      *   Hello_Time from msgTimes to portTimes.
      * 802.1Q-2011, on the other hand, says that Hello_Time should be set
      *   to the default here.
-     * As we have configurable Hello_Time, I choose the third option:
-     *   preserve the configured Hello_Time, It is in accordance with the
-     *   spirit of 802.1Q-2011, if we allow Hello_Time to be configurable.
      */
-    __u8 prev_Hello_Time = 0;
-    assign(prev_Hello_Time, ptp->portTimes.Hello_Time);
     assign(ptp->portTimes, ptp->msgTimes);
-    assign(ptp->portTimes.Hello_Time, prev_Hello_Time);
+    assign(ptp->portTimes.Hello_Time, (__u8)DEFAULT_HELLO_TIME);
 }
 
 /* 13.24.s) + 17.19.7 of 802.1D : fdbFlush */
