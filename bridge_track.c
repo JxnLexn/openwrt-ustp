@@ -649,6 +649,7 @@ int bridge_create(int bridge_idx, CIST_BridgeConfig *cfg)
 	bridge_t *br, *other_br;
     port_t *port, *tmp;
 	int flags;
+	int priority;
 	bool found;
 	int i;
 
@@ -659,6 +660,15 @@ int bridge_create(int bridge_idx, CIST_BridgeConfig *cfg)
 		return -1;
 
 	MSTP_IN_set_cist_bridge_config(br, cfg);
+	priority = get_bridge_priority(br->sysdeps.name);
+	if (priority >= 0) {
+		if (MSTP_IN_set_cist_bridge_priority(br, priority / 4096))
+			ERROR_BRNAME(br, "Couldn't apply bridge priority %d", priority);
+		else
+			INFO_BRNAME(br, "Set bridge priority to %d", priority);
+	} else {
+		ERROR_BRNAME(br, "Keeping current bridge priority after sysfs read error");
+	}
 
 	flags = get_flags(br->sysdeps.name);
 	if (flags >= 0)

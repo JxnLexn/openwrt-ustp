@@ -998,6 +998,17 @@ int MSTP_IN_set_msti_bridge_config(tree_t *tree, __u8 bridge_priority)
     return 0;
 }
 
+int MSTP_IN_set_cist_bridge_priority(bridge_t *br, __u8 bridge_priority)
+{
+    int ret;
+
+    ret = MSTP_IN_set_msti_bridge_config(GET_CIST_TREE(br), bridge_priority);
+    if (!ret && br->bridgeEnabled)
+        br_state_machines_run(br);
+
+    return ret;
+}
+
 /* 12.8.2.1 Read CIST Port Parameters */
 void MSTP_IN_get_cist_port_status(port_t *prt, CIST_PortStatus *status)
 {
