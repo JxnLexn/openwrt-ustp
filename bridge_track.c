@@ -665,10 +665,34 @@ int bridge_create(int bridge_idx, CIST_BridgeConfig *cfg)
 		set_br_up(br, !!(flags & IFF_UP));
 
 	n_ports = get_port_list(br->sysdeps.name, &namelist);
-	port_list = alloca(n_ports * sizeof(*port_list));
+	if (n_ports < 0) {
+		ERROR_BRNAME(br, "Couldn't enumerate bridge ports: %m");
+		return -1;
+	}
+
+	port_list = NULL;
+	if (n_ports) {
+		port_list = calloc(n_ports, sizeof(*port_list));
+		if (!port_list) {
+			ERROR_BRNAME(br, "Out of memory while enumerating bridge ports");
+			for (i = 0; i < n_ports; i++)
+				free(namelist[i]);
+			free(namelist);
+			return -1;
+		}
+	}
 
 	for (i = 0; i < n_ports; i++) {
 		port_list[i] = if_nametoindex(namelist[i]->d_name);
+		if (!port_list[i]) {
+			ERROR_BRNAME(br, "Bridge port %s disappeared while enumerating ports",
+				     namelist[i]->d_name);
+			for (; i < n_ports; i++)
+				free(namelist[i]);
+			free(namelist);
+			free(port_list);
+			return -1;
+		}
 		free(namelist[i]);
 	}
 	free(namelist);
@@ -713,6 +737,7 @@ int bridge_create(int bridge_idx, CIST_BridgeConfig *cfg)
 		set_if_up(port, !(~flags & (IFF_UP | IFF_RUNNING)));
 	}
 
+	free(port_list);
 	return 0;
 }
 
