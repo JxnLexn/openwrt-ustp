@@ -145,7 +145,8 @@ ubus_bridge_state(struct ubus_context *ctx, struct ubus_object *obj,
 		ev.type = WORKER_EV_BRIDGE_REMOVE;
 	}
 
-	worker_queue_event(&ev);
+	if (!worker_queue_event(&ev))
+		return UBUS_STATUS_NO_MEMORY;
 
 	return 0;
 }

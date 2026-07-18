@@ -12,8 +12,8 @@
  * GNU General Public License for more details.
  */
 #include <pthread.h>
+#include <limits.h>
 #include <string.h>
-#include <stdlib.h>
 
 #include <libubox/uloop.h>
 #include <libubox/utils.h>
@@ -26,31 +26,53 @@
 static pthread_t w_thread;
 static pthread_mutex_t w_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t w_cond = PTHREAD_COND_INITIALIZER;
-static LIST_HEAD(w_queue);
+static struct worker_event w_queue[WORKER_QUEUE_SIZE];
+static unsigned int w_queue_head;
+static unsigned int w_queue_count;
+static bool w_shutdown;
 static struct uloop_timeout w_timer;
 
-struct worker_queued_event {
-	struct list_head list;
-	struct worker_event ev;
-};
-
-static struct worker_event *worker_next_event(void)
+static bool worker_event_is_background(enum worker_event_type type)
 {
-	struct worker_queued_event *ev;
-	static struct worker_event ev_data;
+	return type == WORKER_EV_RECV_PACKET ||
+	       type == WORKER_EV_BRIDGE_EVENT ||
+	       type == WORKER_EV_ONE_SECOND;
+}
+
+static int worker_find_pending(enum worker_event_type type)
+{
+	unsigned int i;
+
+	for (i = 0; i < w_queue_count; i++) {
+		unsigned int pos = (w_queue_head + i) % WORKER_QUEUE_SIZE;
+
+		if (w_queue[pos].type == type)
+			return pos;
+	}
+
+	return -1;
+}
+
+static struct worker_event worker_next_event(void)
+{
+	struct worker_event ev;
 
 	pthread_mutex_lock(&w_lock);
-	while (list_empty(&w_queue))
+	while (!w_queue_count && !w_shutdown)
 		pthread_cond_wait(&w_cond, &w_lock);
 
-	ev = list_first_entry(&w_queue, struct worker_queued_event, list);
-	list_del(&ev->list);
+	if (!w_queue_count) {
+		ev = (struct worker_event) { .type = WORKER_EV_SHUTDOWN };
+		pthread_mutex_unlock(&w_lock);
+		return ev;
+	}
+
+	ev = w_queue[w_queue_head];
+	w_queue_head = (w_queue_head + 1) % WORKER_QUEUE_SIZE;
+	w_queue_count--;
 	pthread_mutex_unlock(&w_lock);
 
-	memcpy(&ev_data, &ev->ev, sizeof(ev_data));
-	free(ev);
-
-	return &ev_data;
+	return ev;
 }
 
 static void
@@ -58,7 +80,8 @@ handle_worker_event(struct worker_event *ev)
 {
 	switch (ev->type) {
 	case WORKER_EV_ONE_SECOND:
-		bridge_one_second();
+		while (ev->count--)
+			bridge_one_second();
 		break;
 	case WORKER_EV_BRIDGE_EVENT:
 		bridge_event_handler();
@@ -79,14 +102,14 @@ handle_worker_event(struct worker_event *ev)
 
 static void *worker_thread_fn(void *arg)
 {
-	struct worker_event *ev;
+	struct worker_event ev;
 
 	while (1) {
 		ev = worker_next_event();
-		if (ev->type == WORKER_EV_SHUTDOWN)
+		if (ev.type == WORKER_EV_SHUTDOWN)
 			break;
 
-		handle_worker_event(ev);
+		handle_worker_event(&ev);
 	}
 
 	return NULL;
@@ -104,6 +127,9 @@ static void worker_timer_cb(struct uloop_timeout *t)
 
 int worker_init(void)
 {
+	w_queue_head = 0;
+	w_queue_count = 0;
+	w_shutdown = false;
 	w_timer.cb = worker_timer_cb;
 	uloop_timeout_set(&w_timer, 1000);
 
@@ -112,24 +138,48 @@ int worker_init(void)
 
 void worker_cleanup(void)
 {
-	struct worker_event ev = {
-		.type = WORKER_EV_SHUTDOWN,
-	};
-
-	worker_queue_event(&ev);
+	pthread_mutex_lock(&w_lock);
+	w_shutdown = true;
+	pthread_cond_signal(&w_cond);
+	pthread_mutex_unlock(&w_lock);
 	pthread_join(w_thread, NULL);
 }
 
-void worker_queue_event(struct worker_event *ev)
+bool worker_queue_event(const struct worker_event *ev)
 {
-	struct worker_queued_event *evc;
-
-	evc = malloc(sizeof(*evc));
-	memcpy(&evc->ev, ev, sizeof(*ev));
+	unsigned int limit = WORKER_QUEUE_SIZE;
+	unsigned int pos;
+	int pending;
+	bool queued = false;
 
 	pthread_mutex_lock(&w_lock);
-	list_add_tail(&evc->list, &w_queue);
+	if (w_shutdown)
+		goto out;
+
+	if (worker_event_is_background(ev->type)) {
+		pending = worker_find_pending(ev->type);
+		if (pending >= 0) {
+			if (ev->type == WORKER_EV_ONE_SECOND &&
+			    w_queue[pending].count < UINT_MAX)
+				w_queue[pending].count++;
+			queued = true;
+			goto out;
+		}
+		limit -= WORKER_CONTROL_RESERVE;
+	}
+
+	if (w_queue_count >= limit)
+		goto out;
+
+	pos = (w_queue_head + w_queue_count) % WORKER_QUEUE_SIZE;
+	w_queue[pos] = *ev;
+	w_queue[pos].count = 1;
+	w_queue_count++;
+	queued = true;
+	pthread_cond_signal(&w_cond);
+
+out:
 	pthread_mutex_unlock(&w_lock);
 
-	pthread_cond_signal(&w_cond);
+	return queued;
 }
