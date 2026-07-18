@@ -642,6 +642,37 @@ static int get_port_list(const char *br_ifname, struct dirent ***namelist)
 	return scandir(buf, namelist, not_dot_dotdot, versionsort);
 }
 
+static int resolve_port_list(struct dirent **namelist, int n_ports,
+			     int **port_list)
+{
+	int *resolved = NULL;
+	int i = 0;
+
+	if (n_ports) {
+		resolved = calloc(n_ports, sizeof(*resolved));
+		if (!resolved)
+			goto error;
+	}
+
+	for (i = 0; i < n_ports; i++) {
+		resolved[i] = if_nametoindex(namelist[i]->d_name);
+		if (!resolved[i])
+			goto error;
+		free(namelist[i]);
+	}
+	free(namelist);
+	*port_list = resolved;
+	return 0;
+
+error:
+	for (; i < n_ports; i++)
+		free(namelist[i]);
+	free(namelist);
+	free(resolved);
+	*port_list = NULL;
+	return -1;
+}
+
 int bridge_create(int bridge_idx, CIST_BridgeConfig *cfg)
 {
 	struct dirent **namelist;
@@ -680,32 +711,10 @@ int bridge_create(int bridge_idx, CIST_BridgeConfig *cfg)
 		return -1;
 	}
 
-	port_list = NULL;
-	if (n_ports) {
-		port_list = calloc(n_ports, sizeof(*port_list));
-		if (!port_list) {
-			ERROR_BRNAME(br, "Out of memory while enumerating bridge ports");
-			for (i = 0; i < n_ports; i++)
-				free(namelist[i]);
-			free(namelist);
-			return -1;
-		}
+	if (resolve_port_list(namelist, n_ports, &port_list)) {
+		ERROR_BRNAME(br, "Couldn't resolve bridge ports");
+		return -1;
 	}
-
-	for (i = 0; i < n_ports; i++) {
-		port_list[i] = if_nametoindex(namelist[i]->d_name);
-		if (!port_list[i]) {
-			ERROR_BRNAME(br, "Bridge port %s disappeared while enumerating ports",
-				     namelist[i]->d_name);
-			for (; i < n_ports; i++)
-				free(namelist[i]);
-			free(namelist);
-			free(port_list);
-			return -1;
-		}
-		free(namelist[i]);
-	}
-	free(namelist);
 
     list_for_each_entry_safe(port, tmp, &br->ports, br_list) {
 		found = false;
