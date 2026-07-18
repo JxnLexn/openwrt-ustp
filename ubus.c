@@ -54,6 +54,8 @@ ubus_set_bridge_config(struct blob_attr *attr)
 		return false;
 
 	cfg = bridge_config_get(blobmsg_get_string(cur), true);
+	if (!cfg)
+		return false;
 
 	bc = &cfg->config;
 	bc->protocol_version = protoRSTP;

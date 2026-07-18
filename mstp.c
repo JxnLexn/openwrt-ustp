@@ -268,7 +268,10 @@ bool MSTP_IN_bridge_create(bridge_t *br, __u8 *macaddr)
 
     /* Create CIST */
     if(!(cist = create_tree(br, macaddr, 0)))
+    {
+        driver_delete_bridge(br);
         return false;
+    }
     list_add_tail(&cist->bridge_list, &br->trees);
 
     return true;
@@ -321,6 +324,7 @@ bool MSTP_IN_port_create_and_add_tail(port_t *prt, __u16 portno)
                 list_del(&ptp->tree_list);
                 free(ptp);
             }
+            driver_delete_port(prt);
             return false;
         }
         list_add_tail(&ptp->port_list, &prt->trees);
@@ -1540,6 +1544,7 @@ bool MSTP_IN_create_msti(bridge_t *br, __u16 mstid)
                 list_del(&ptp->tree_list);
                 free(ptp);
             }
+            free(new_tree);
             return false;
         }
         list_add(&new_ptp->port_list, &ptp_after->port_list);
