@@ -7,7 +7,7 @@ find_package(Threads)
 
 ADD_DEFINITIONS(-Os -Wall -Werror --std=gnu99 -g3 -Wmissing-declarations -Wno-error=missing-declarations -I${CMAKE_SOURCE_DIR})
 
-ADD_EXECUTABLE(ustpd bridge_track.c brmon.c hmac_md5.c libnetlink.c mstp.c netif_utils.c packet.c worker.c config.c main.c ubus.c)
+ADD_EXECUTABLE(ustpd bridge_track.c brmon.c hmac_md5.c libnetlink.c mstp.c netif_utils.c packet.c worker.c worker_queue.c config.c main.c ubus.c)
 TARGET_LINK_LIBRARIES(ustpd ubox ubus Threads::Threads)
 
 SET(CMAKE_INSTALL_PREFIX /)
