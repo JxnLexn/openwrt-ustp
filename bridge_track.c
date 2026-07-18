@@ -630,7 +630,7 @@ static int not_dot_dotdot(const struct dirent *entry)
 {
 	const char *n = entry->d_name;
 
-	return strcmp(n, ".") || strcmp(n, "..");
+	return strcmp(n, ".") && strcmp(n, "..");
 }
 
 static int get_port_list(const char *br_ifname, struct dirent ***namelist)
